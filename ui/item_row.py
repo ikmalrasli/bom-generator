@@ -20,7 +20,7 @@ from typing import Callable, Dict, Optional
 import customtkinter as ctk
 from tkinter import filedialog
 
-from config import COLOR_DANGER, COLOR_CARD_BG, COLOR_SUCCESS, COLOR_TEXT, COLOR_INPUT_TEXT, FONT_SIZE_INPUT, FONT_SIZE_BUTTON, PADDING_INPUT, PADDING_ROW, INPUT_HEIGHT
+from config import COLOR_ACCENT, COLOR_DANGER, COLOR_CARD_BG, COLOR_SUCCESS, COLOR_TEXT, COLOR_INPUT_TEXT, FONT_SIZE_INPUT, FONT_SIZE_BUTTON, PADDING_INPUT, PADDING_ROW, INPUT_HEIGHT
 from core.data_handler import BOMItem
 
 # Icon loading helper
@@ -75,6 +75,20 @@ class BOMItemRow(ctk.CTkFrame):
         self._col_w = dict(DEFAULT_COLUMN_WIDTHS)
         if column_widths:
             self._col_w.update(column_widths)
+
+        # --- Drag handle ---
+        grip_icon = self._load_icon("ui/icons/grip-vertical.png")
+        self.handle_label = ctk.CTkLabel(
+            self, 
+            text="", 
+            image=grip_icon, 
+            width=self._col_w["handle"],
+            cursor="hand2"
+        )
+        self.handle_label.pack(side="left", padx=(2, 4))
+        self.handle_label.bind("<Button-1>", self._handle_drag_start)
+        self.handle_label.bind("<B1-Motion>", self._handle_drag_motion)
+        self.handle_label.bind("<ButtonRelease-1>", self._handle_drag_end)
 
         # --- Index label ---
         self.index_label = ctk.CTkLabel(self, text=str(item.index), text_color=COLOR_TEXT, width=self._col_w["index"])
@@ -157,21 +171,6 @@ class BOMItemRow(ctk.CTkFrame):
         )
         self.pdf_button.pack(side="left", padx=4)
 
-        # --- Drag handle ---
-        # The spec calls for binding drag events to the handle label.
-        grip_icon = self._load_icon("ui/icons/grip-vertical.png")
-        self.handle_label = ctk.CTkLabel(
-            self, 
-            text="", 
-            image=grip_icon, 
-            width=self._col_w["handle"],
-            cursor="hand2"
-        )
-        self.handle_label.pack(side="left", padx=(6, 2))
-        self.handle_label.bind("<Button-1>", self._handle_drag_start)
-        self.handle_label.bind("<B1-Motion>", self._handle_drag_motion)
-        self.handle_label.bind("<ButtonRelease-1>", self._handle_drag_end)
-
         # --- Delete button (Pill shape) ---
         delete_icon = self._load_icon("ui/icons/x.png")
         self.delete_button = ctk.CTkButton(
@@ -182,9 +181,11 @@ class BOMItemRow(ctk.CTkFrame):
             command=self._delete,
             font=ctk.CTkFont(size=FONT_SIZE_BUTTON, weight="bold"),
             corner_radius=15,  # Pill shape
-            fg_color=COLOR_DANGER,
+            fg_color='transparent',
             text_color=COLOR_TEXT,
-            hover_color="#b83540",
+            hover_color=COLOR_DANGER,
+            border_width=1,
+            border_color="#333333",
             image=delete_icon
         )
         self.delete_button.pack(side="left", padx=(4, 10))
@@ -219,12 +220,13 @@ class BOMItemRow(ctk.CTkFrame):
             return
 
         if Path(path).is_file():
-            # File exists - success state with green accent
+            # File exists - success state with accent
             self.pdf_button.configure(
                 image=self._load_icon("ui/icons/check.png"),
-                fg_color=COLOR_SUCCESS,
+                fg_color=COLOR_ACCENT,
                 text_color=COLOR_TEXT,
-                border_color=COLOR_SUCCESS
+                border_color=COLOR_ACCENT,
+                hover_color='#0a66b2'
             )
         else:
             # File referenced but not found - danger state

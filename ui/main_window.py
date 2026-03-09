@@ -30,6 +30,8 @@ from config import (
     COLOR_TEXT,
     COLOR_TEXT_MUTED,
     COLOR_TEXT_SUBTLE,
+    COLOR_SUCCESS,
+    COLOR_DANGER,
     COLOR_INPUT_TEXT,
     FONT_SIZE_APP_BRAND,
     FONT_SIZE_PROJECT_TITLE,
@@ -115,8 +117,8 @@ class MainWindow(ctk.CTk):
         self.brand_label = ctk.CTkLabel(
             brand_left,
             text="BOM GENERATOR PRO",
-            text_color=COLOR_TEXT_SUBTLE,
-            font=ctk.CTkFont(size=FONT_SIZE_APP_BRAND, weight="normal")
+            text_color=COLOR_TEXT,
+            font=ctk.CTkFont(size=FONT_SIZE_APP_BRAND, weight="bold")
         )
         self.brand_label.pack(side="left")
         
@@ -185,6 +187,36 @@ class MainWindow(ctk.CTk):
             width=300
         )
         
+        # Accept button for project name editing (initially hidden)
+        self.project_accept_btn = ctk.CTkButton(
+            self.project_title_frame,
+            text="",
+            width=30,
+            height=INPUT_HEIGHT,
+            font=ctk.CTkFont(size=FONT_SIZE_INPUT, weight="bold"),
+            fg_color=COLOR_SUCCESS,
+            hover_color="#2a8a3a",
+            text_color="#FFFFFF",
+            corner_radius=6,
+            command=self._accept_project_name_edit,
+            image=self._load_icon("ui/icons/check.png"),
+        )
+        
+        # Cancel button for project name editing (initially hidden)
+        self.project_cancel_btn = ctk.CTkButton(
+            self.project_title_frame,
+            text="",
+            width=30,
+            height=INPUT_HEIGHT,
+            font=ctk.CTkFont(size=FONT_SIZE_INPUT, weight="bold"),
+            fg_color=COLOR_DANGER,
+            hover_color="#e53935",
+            text_color="#FFFFFF",
+            corner_radius=6,
+            command=self._cancel_project_name_edit,
+            image=self._load_icon("ui/icons/x.png"),
+        )
+        
         # Bind click events to make title editable
         self.project_label.bind("<Button-1>", self._start_edit_project_name)
         self.edit_icon.bind("<Button-1>", self._start_edit_project_name)
@@ -209,8 +241,6 @@ class MainWindow(ctk.CTk):
         items_frame = ctk.CTkFrame(self.root_frame, fg_color="transparent")
         items_frame.pack(fill="both", expand=True)
 
-        make_section_title(items_frame, "BOM ITEMS").pack(anchor="w")
-
         # Explicit column headers (matches wireframe request).
         self.columns_header = ctk.CTkFrame(items_frame, fg_color="transparent")
         self.columns_header.pack(fill="x", pady=(8, 0))
@@ -230,13 +260,13 @@ class MainWindow(ctk.CTk):
             w.pack(side="left", padx=4)
             return w
 
-        _lbl("#", self.column_widths["index"]).pack_configure(padx=(8, 4))
+        _lbl("", self.column_widths["handle"])
+        _lbl("ITEM", self.column_widths["index"]).pack_configure(padx=(8, 4))
         _lbl("MODEL", self.column_widths["model"])
         _lbl("DESCRIPTION", self.column_widths["description"])
         _lbl("MAKE", self.column_widths["make"])
         _lbl("QTY", self.column_widths["qty"])
         _lbl("PDF", self.column_widths["pdf"])
-        _lbl("", self.column_widths["handle"])
         _lbl("", self.column_widths["delete"]).pack_configure(padx=(4, 10))
 
     def _build_footer(self) -> None:
@@ -332,7 +362,7 @@ class MainWindow(ctk.CTk):
         """Start inline editing of project name."""
         current_text = self.project_label.cget("text")
         
-        # Hide label, show entry
+        # Hide label, show entry and buttons
         self.project_label.pack_forget()
         self.edit_icon.pack_forget()
         
@@ -342,6 +372,10 @@ class MainWindow(ctk.CTk):
         self.project_entry.pack(side="left")
         self.project_entry.focus_set()
         self.project_entry.select_range(0, "end")
+        
+        # Show accept and cancel buttons
+        self.project_accept_btn.pack(side="left", padx=(8, 4))
+        self.project_cancel_btn.pack(side="left")
     
     def _finish_edit_project_name(self, event=None) -> None:
         """Finish inline editing of project name."""
@@ -354,8 +388,28 @@ class MainWindow(ctk.CTk):
         else:
             self.project_label.configure(text="Untitled Project")
         
-        # Hide entry, show label
+        # Hide entry and buttons, show label
         self.project_entry.pack_forget()
+        self.project_accept_btn.pack_forget()
+        self.project_cancel_btn.pack_forget()
+        self.project_label.pack(side="left")
+        self.edit_icon.pack(side="left", padx=(8, 0))
+    
+    def _accept_project_name_edit(self) -> None:
+        """Accept project name edit via button click."""
+        self._finish_edit_project_name()
+    
+    def _cancel_project_name_edit(self) -> None:
+        """Cancel project name edit and restore original value."""
+        # Restore original text from label
+        original_text = self.project_label.cget("text")
+        self.project_entry.delete(0, "end")
+        self.project_entry.insert(0, original_text)
+        
+        # Hide entry and buttons, show label
+        self.project_entry.pack_forget()
+        self.project_accept_btn.pack_forget()
+        self.project_cancel_btn.pack_forget()
         self.project_label.pack(side="left")
         self.edit_icon.pack(side="left", padx=(8, 0))
     
@@ -376,6 +430,8 @@ class MainWindow(ctk.CTk):
         # Clear existing button
         if self.cover_action_btn:
             self.cover_action_btn.destroy()
+        if hasattr(self, 'close_btn') and self.close_btn:
+            self.close_btn.destroy()
         
         if not self.cover_page_path:
             # Empty state - show add cover button
@@ -393,18 +449,31 @@ class MainWindow(ctk.CTk):
             )
             self.cover_action_btn.pack()
         else:
+            # Close button (outside pill container)
+            self.close_btn = ctk.CTkButton(
+                self.cover_action_frame,
+                text="",
+                command=self.clear_cover,
+                fg_color="transparent",
+                text_color=COLOR_TEXT_MUTED,
+                hover_color=COLOR_DANGER,
+                width=10,
+                height=10,
+                font=ctk.CTkFont(size=10),
+                corner_radius=10,
+                image=self._load_icon("ui/icons/x.png")
+            )
+            self.close_btn.pack(side="right")
+
             # Selected state - show pill with filename and close button
             filename = self._truncate_filename(Path(self.cover_page_path).name)
             
             # Create pill container
             pill_frame = ctk.CTkFrame(
                 self.cover_action_frame,
-                fg_color="#1a3a2a",  # Greenish background
-                corner_radius=15,
-                border_width=1,
-                border_color=COLOR_SUCCESS
+                fg_color="#2a2a2a",  # Greenish background
             )
-            pill_frame.pack(side="right")
+            pill_frame.pack(side="right", padx=(0, 8))
             
             # PDF icon
             pdf_icon = ctk.CTkLabel(
@@ -423,25 +492,11 @@ class MainWindow(ctk.CTk):
             )
             filename_label.pack(side="left", padx=(0, 4))
             
-            # Close button
-            close_btn = ctk.CTkButton(
-                pill_frame,
-                text="",
-                command=self.clear_cover,
-                fg_color="transparent",
-                text_color=COLOR_TEXT_MUTED,
-                hover_color=COLOR_DANGER,
-                width=20,
-                height=20,
-                font=ctk.CTkFont(size=10),
-                corner_radius=10,
-                image=self._load_icon("ui/icons/x.png")
-            )
-            close_btn.pack(side="left", padx=(0, 6))
+            
             
             self.cover_action_btn = pill_frame
     
-    def _truncate_filename(self, filename: str, max_length: int = 20) -> str:
+    def _truncate_filename(self, filename: str, max_length: int = 30) -> str:
         """Truncate filename if longer than max_length."""
         if len(filename) <= max_length:
             return filename
