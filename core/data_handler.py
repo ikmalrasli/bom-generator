@@ -83,8 +83,8 @@ def save_to_json(project_file_path: str, items: List[BOMItem], cover_page_path: 
     project_path = Path(project_file_path)
     project_dir = project_path.parent
     payload = new_project_payload(items=items, cover_page_path=cover_page_path, project_dir=project_dir)
-
     project_dir.mkdir(parents=True, exist_ok=True)
+
     project_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 

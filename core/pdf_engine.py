@@ -23,8 +23,8 @@ from typing import List, Optional
 
 import fitz  # PyMuPDF
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
-from reportlab.lib.pagesizes import LETTER
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
@@ -36,55 +36,70 @@ from core.data_handler import BOMItem
 class PDFEngine:
     """High-level PDF generator/merger."""
 
-    def build_summary_table_pdf(self, items: List[BOMItem], out_pdf_path: str) -> None:
+    def format_text(self, text: str, uppercase: bool = True) -> str:
+        """Apply text formatting based on uppercase flag."""
+        return text.upper() if uppercase and text else text
+
+    def build_summary_table_pdf(self, items: List[BOMItem], out_pdf_path: str, uppercase: bool = True) -> None:
         """Create a one-page (or multi-page) summary table."""
 
         # ReportLab uses a document template that writes directly to `out_pdf_path`.
-        doc = SimpleDocTemplate(out_pdf_path, pagesize=LETTER)
+        doc = SimpleDocTemplate(out_pdf_path, pagesize=A4)
         styles = getSampleStyleSheet()
 
-        # Table header row.
-        data = [["Item", "Model", "Description", "Make", "Qty"]]
+        # Create paragraph style for table cells
+        cell_style = ParagraphStyle(
+            "table_cell",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=11,  # Line spacing
+            alignment=TA_LEFT,
+        )
+
+        # Table header row (keep as strings for header)
+        headers = ["Item", "Model", "Description", "Make", "Qty"]
+        data = [[self.format_text(header, uppercase) for header in headers]]
+
+        # Convert cell content to Paragraphs for wrapping
         for i in items:
             data.append([
-                str(i.index),
-                i.model,
-                i.description,
-                i.make,
-                str(i.quantity),
+                self.format_text(str(i.index), uppercase),  # Item number - no wrapping needed
+                Paragraph(self.format_text(i.model or "", uppercase), cell_style),  # Model - wrap if needed
+                Paragraph(self.format_text(i.description or "", uppercase), cell_style),  # Description - wrap if needed
+                Paragraph(self.format_text(i.make or "", uppercase), cell_style),  # Make - wrap if needed
+                self.format_text(str(i.quantity), uppercase),  # Quantity - no wrapping needed
             ])
 
         # Build a readable, engineering-style grid.
-        table = Table(data, repeatRows=1, colWidths=[40, 120, 220, 110, 50])
+        table = Table(data, repeatRows=1, colWidths=[30, 100, 280, 100, 30])
         table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0078D4")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica"),
                     ("FONTSIZE", (0, 0), (-1, -1), 9),
                     ("ALIGN", (0, 0), (0, -1), "CENTER"),
                     ("ALIGN", (-1, 1), (-1, -1), "CENTER"),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.white]),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ]
             )
         )
 
         story = [
-            Paragraph("Bill of Materials", styles["Title"]),
-            Spacer(1, 10),
             table,
         ]
 
         doc.build(story)
 
-    def build_item_header_pdf(self, item: BOMItem, out_pdf_path: str) -> None:
+    def build_item_header_pdf(self, item: BOMItem, out_pdf_path: str, uppercase: bool = True) -> None:
         """Create a single-page header inserted before each datasheet."""
 
-        c = canvas.Canvas(out_pdf_path, pagesize=LETTER)
-        page_width, page_height = LETTER
+        c = canvas.Canvas(out_pdf_path, pagesize=A4)
+        page_width, page_height = A4
 
         styles = getSampleStyleSheet()
 
@@ -96,7 +111,7 @@ class PDFEngine:
             "item_header_title",
             parent=styles["Normal"],
             fontName="Helvetica-Bold",
-            fontSize=12,
+            fontSize=16,
             leading=15,
             alignment=TA_LEFT,
         )
@@ -105,23 +120,32 @@ class PDFEngine:
             "item_header_detail",
             parent=styles["Normal"],
             fontName="Helvetica-Bold",
-            fontSize=11,
+            fontSize=16,
+            leading=14,
+            alignment=TA_LEFT,
+        )
+
+        qty_detail_style = ParagraphStyle(
+            "item_header_detail",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=16,
             leading=14,
             alignment=TA_LEFT,
         )
 
         # Keep the header page intentionally simple and consistent.
         # This acts as a separator between datasheets in the final merged PDF.
-        title_text = f"Item {item.index}: {item.description or '(No Description)'}"
-        make_text = f"Make: {item.make or '-'}"
-        model_text = f"Model: {item.model or '-'}"
-        qty_text = f"Qty: {item.quantity}"
+        title_text = f"ITEM {item.index}: {self.format_text(item.description or '(No Description)', uppercase)}"
+        make_text = f"MAKE: {self.format_text(item.make or '-', uppercase)}"
+        model_text = f"MODEL: {self.format_text(item.model or '-', uppercase)}"
+        qty_text = f"QTY: {item.quantity}"
 
         blocks = [
             Paragraph(title_text, title_style),
             Paragraph(make_text, detail_style),
             Paragraph(model_text, detail_style),
-            Paragraph(qty_text, detail_style),
+            Paragraph(qty_text, qty_detail_style),
         ]
 
         heights: List[float] = []
@@ -148,6 +172,7 @@ class PDFEngine:
         cover_pdf_path: Optional[str],
         items: List[BOMItem],
         output_pdf_path: str,
+        uppercase: bool = True,
     ) -> None:
         """Create final merged BOM package.
 
@@ -181,12 +206,12 @@ class PDFEngine:
 
         header_tmps: List[str] = []
         try:
-            self.build_summary_table_pdf(items, summary_tmp.name)
+            self.build_summary_table_pdf(items, summary_tmp.name, uppercase)
 
             for it in items:
                 hdr_tmp = tempfile.NamedTemporaryFile(suffix=f"_item_{it.index}_header.pdf", delete=False)
                 hdr_tmp.close()
-                self.build_item_header_pdf(it, hdr_tmp.name)
+                self.build_item_header_pdf(it, hdr_tmp.name, uppercase)
                 header_tmps.append(hdr_tmp.name)
 
             # Merge using PyMuPDF to preserve vector content.
