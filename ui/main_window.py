@@ -45,7 +45,7 @@ from config import (
     INPUT_HEIGHT,
     DEFAULT_OUTPUT_DIRNAME,
 )
-from core.data_handler import BOMItem, load_from_json, save_to_json
+from core.data_handler import BOMItem, load_from_excel, save_to_excel
 from core.pdf_engine import PDFEngine
 from core.reorder_logic import move_item, refresh_item_indices
 from ui.components import init_ui_theme, make_app_frame, make_divider, make_icon_button, make_primary_button, make_section_title
@@ -64,7 +64,6 @@ class MainWindow(ctk.CTk):
         self.configure(fg_color=COLOR_BG)
 
         # Project state (source of truth)
-        self.project_file_path: Optional[str] = None
         self.cover_page_path: Optional[str] = None
         self.items: List[BOMItem] = []
         self.rows: List[BOMItemRow] = []
@@ -116,118 +115,38 @@ class MainWindow(ctk.CTk):
         
         self.brand_label = ctk.CTkLabel(
             brand_left,
-            text="BOM GENERATOR PRO",
+            text="BOM GENERATOR",
             text_color=COLOR_TEXT,
             font=ctk.CTkFont(size=FONT_SIZE_APP_BRAND, weight="bold")
         )
         self.brand_label.pack(side="left")
         
-        # Right side - Save/Load buttons
+        # Right side - Excel buttons
         right = ctk.CTkFrame(brand_header, fg_color="transparent")
         right.pack(side="right", padx=10, pady=5)
         
-        self.save_btn = make_icon_button(right, "Save", self.save_project, width=110, height=40, icon_path="ui/icons/save.png")
-        self.save_btn.pack(side="left", padx=(0, 8))
+        self.load_excel_btn = make_icon_button(right, "Load Excel", self.import_from_excel, width=110, height=40, icon_path="ui/icons/folder-open.png")
+        self.load_excel_btn.pack(side="left", padx=(0, 8))
         
-        self.load_btn = make_icon_button(right, "Load", self.load_project, width=110, height=40, icon_path="ui/icons/folder-open.png")
-        self.load_btn.pack(side="left")
+        self.save_excel_btn = make_icon_button(right, "Save Excel", self.save_excel, width=110, height=40, icon_path="ui/icons/save.png")
+        self.save_excel_btn.pack(side="left")
         
-        # Project title header (prominent, hero text) - now includes cover action
-        project_header = ctk.CTkFrame(self.root_frame, fg_color="transparent", height=50)
-        project_header.pack(fill="x", pady=(0, 8))
-        project_header.pack_propagate(False)
+        # Cover page action - now left aligned
+        cover_frame = ctk.CTkFrame(self.root_frame, fg_color="transparent", height=40)
+        cover_frame.pack(fill="x", pady=(0, 8))
+        cover_frame.pack_propagate(False)
         
-        # Left side - Project title
-        project_left = ctk.CTkFrame(project_header, fg_color="transparent")
-        project_left.pack(side="left", padx=10, pady=10)
-        
-        # Project title container (acts like an inline editable field)
-        self.project_title_frame = ctk.CTkFrame(project_left, fg_color="transparent")
-        self.project_title_frame.pack(side="left")
-        
-        # Project title label (looks like text, but is clickable)
-        self.project_label = ctk.CTkLabel(
-            self.project_title_frame,
-            text="Untitled Project",
-            text_color=COLOR_TEXT,
-            font=ctk.CTkFont(size=FONT_SIZE_PROJECT_TITLE, weight="bold"),
-            cursor="hand2"
-        )
-        self.project_label.pack(side="left")
-        
-        # Edit icon (subtle pencil)
-        self.edit_icon = ctk.CTkLabel(
-            self.project_title_frame,
-            text="",
-            image=self._load_icon("ui/icons/pencil.png"),
-            cursor="hand2"
-        )
-        self.edit_icon.pack(side="left", padx=(8, 0))
-        
-        # Right side - Cover page action
-        project_right = ctk.CTkFrame(project_header, fg_color="transparent")
-        project_right.pack(side="right", padx=10, pady=10)
+        # Left side - Cover action
+        cover_left = ctk.CTkFrame(cover_frame, fg_color="transparent")
+        cover_left.pack(side="left", padx=10, pady=10)
         
         # Cover action container
-        self.cover_action_frame = ctk.CTkFrame(project_right, fg_color="transparent")
-        self.cover_action_frame.pack(side="right")
+        self.cover_action_frame = ctk.CTkFrame(cover_left, fg_color="transparent")
+        self.cover_action_frame.pack(side="left")
         
         # Initialize cover action button
         self.cover_action_btn = None
         self._update_cover_action()
-        
-        # Hidden entry field for inline editing
-        self.project_entry = ctk.CTkEntry(
-            self.project_title_frame,
-            font=ctk.CTkFont(size=FONT_SIZE_PROJECT_TITLE, weight="bold"),
-            fg_color=COLOR_CARD_BG,
-            text_color=COLOR_INPUT_TEXT,
-            border_width=0,
-            height=INPUT_HEIGHT,
-            width=300
-        )
-        
-        # Accept button for project name editing (initially hidden)
-        self.project_accept_btn = ctk.CTkButton(
-            self.project_title_frame,
-            text="",
-            width=30,
-            height=INPUT_HEIGHT,
-            font=ctk.CTkFont(size=FONT_SIZE_INPUT, weight="bold"),
-            fg_color=COLOR_SUCCESS,
-            hover_color="#2a8a3a",
-            text_color="#FFFFFF",
-            corner_radius=6,
-            command=self._accept_project_name_edit,
-            image=self._load_icon("ui/icons/check.png"),
-        )
-        
-        # Cancel button for project name editing (initially hidden)
-        self.project_cancel_btn = ctk.CTkButton(
-            self.project_title_frame,
-            text="",
-            width=30,
-            height=INPUT_HEIGHT,
-            font=ctk.CTkFont(size=FONT_SIZE_INPUT, weight="bold"),
-            fg_color=COLOR_DANGER,
-            hover_color="#e53935",
-            text_color="#FFFFFF",
-            corner_radius=6,
-            command=self._cancel_project_name_edit,
-            image=self._load_icon("ui/icons/x.png"),
-        )
-        
-        # Bind click events to make title editable
-        self.project_label.bind("<Button-1>", self._start_edit_project_name)
-        self.edit_icon.bind("<Button-1>", self._start_edit_project_name)
-        self.project_entry.bind("<Return>", self._finish_edit_project_name)
-        self.project_entry.bind("<FocusOut>", self._finish_edit_project_name)
-        
-        # Hover effect for project title
-        self.project_label.bind("<Enter>", self._on_project_title_hover)
-        self.project_label.bind("<Leave>", self._on_project_title_leave)
-        self.edit_icon.bind("<Enter>", self._on_project_title_hover)
-        self.edit_icon.bind("<Leave>", self._on_project_title_leave)
 
     def _build_cover_section(self) -> None:
         """Cover section is now integrated into header - this method is deprecated."""
@@ -298,128 +217,73 @@ class MainWindow(ctk.CTk):
         self.generate_btn.pack(side="right", padx=PADDING_OUTER, pady=PADDING_ROW)
 
     # -------------------------------------------------------------------------
-    # Project actions (Save/Load)
+    # Excel actions (Load/Save)
     # -------------------------------------------------------------------------
-    def save_project(self) -> None:
-        """Save project JSON.
 
-        If the project doesn't have a path yet, prompt the user.
-        """
+    def save_excel(self) -> None:
+        """Save project to Excel file."""
+        if not self.items:
+            messagebox.showwarning("Nothing to Save", "Add at least one item.")
+            return
 
-        if not self.project_file_path:
-            path = filedialog.asksaveasfilename(
-                title="Save Project",
-                defaultextension=".json",
-                filetypes=[("JSON files", "*.json")],
-            )
-            if not path:
-                return
-            self.project_file_path = path
-
-        try:
-            save_to_json(self.project_file_path, self.items, self.cover_page_path)
-            # Update project name from file
-            filename = Path(self.project_file_path).stem
-            self.project_label.configure(text=filename)
-        except Exception as e:
-            messagebox.showerror("Save Failed", str(e))
-
-    def load_project(self) -> None:
-        path = filedialog.askopenfilename(
-            title="Load Project",
-            filetypes=[("JSON files", "*.json")],
+        path = filedialog.asksaveasfilename(
+            title="Save Excel File",
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
         )
         if not path:
             return
 
         try:
-            payload = load_from_json(path)
+            save_to_excel(path, self.items)
+            messagebox.showinfo("Save Successful", f"Saved {len(self.items)} items to Excel file.")
         except Exception as e:
-            messagebox.showerror("Load Failed", str(e))
+            messagebox.showerror("Save Failed", str(e))
+
+    def import_from_excel(self) -> None:
+        """Import BOM items from Excel file."""
+        path = filedialog.askopenfilename(
+            title="Import Excel File",
+            filetypes=[
+                ("Excel files", "*.xlsx *.xls"),
+                ("All files", "*.*")
+            ],
+        )
+        if not path:
             return
 
-        self.project_file_path = path
-        self.cover_page_path = payload.get("cover_page_path")
-        self._update_cover_action()
-        
-        # Update project name from file
-        if path:
-            filename = Path(path).stem
-            self.project_label.configure(text=filename)
-        else:
-            self.project_label.configure(text="Untitled Project")
+        try:
+            payload = load_from_excel(path)
+        except Exception as e:
+            messagebox.showerror("Import Failed", f"Error importing Excel:\n{str(e)}")
+            return
 
-        # Rebuild the UI list from scratch to avoid stale widgets.
+        # Clear existing items (optional - you could ask user first)
+        if self.items:
+            result = messagebox.askyesno(
+                "Clear Existing Items?", 
+                "Import will replace all current items. Continue?"
+            )
+            if not result:
+                return
+        
         self._clear_all_items()
-        for it in payload.get("items", []):
-            self._append_item(it)
+        for item in payload.get("items", []):
+            self._append_item(item)
+        
+        # Update window title to show imported
+        filename = Path(path).stem
+        self.title(f"{APP_TITLE} - {filename} (imported)")
+        
+        messagebox.showinfo(
+            "Import Successful", 
+            f"Imported {len(payload.get('items', []))} items from Excel file."
+        )
 
     def clear_cover(self) -> None:
         self.cover_page_path = None
         self._update_cover_action()
     
-    def _start_edit_project_name(self, event=None) -> None:
-        """Start inline editing of project name."""
-        current_text = self.project_label.cget("text")
-        
-        # Hide label, show entry and buttons
-        self.project_label.pack_forget()
-        self.edit_icon.pack_forget()
-        
-        # Configure and show entry
-        self.project_entry.delete(0, "end")
-        self.project_entry.insert(0, current_text)
-        self.project_entry.pack(side="left")
-        self.project_entry.focus_set()
-        self.project_entry.select_range(0, "end")
-        
-        # Show accept and cancel buttons
-        self.project_accept_btn.pack(side="left", padx=(8, 4))
-        self.project_cancel_btn.pack(side="left")
-    
-    def _finish_edit_project_name(self, event=None) -> None:
-        """Finish inline editing of project name."""
-        new_text = self.project_entry.get().strip()
-        
-        if new_text and new_text != "Untitled Project":
-            self.project_label.configure(text=new_text)
-            # Update window title
-            self.title(f"{APP_TITLE} - {new_text}")
-        else:
-            self.project_label.configure(text="Untitled Project")
-        
-        # Hide entry and buttons, show label
-        self.project_entry.pack_forget()
-        self.project_accept_btn.pack_forget()
-        self.project_cancel_btn.pack_forget()
-        self.project_label.pack(side="left")
-        self.edit_icon.pack(side="left", padx=(8, 0))
-    
-    def _accept_project_name_edit(self) -> None:
-        """Accept project name edit via button click."""
-        self._finish_edit_project_name()
-    
-    def _cancel_project_name_edit(self) -> None:
-        """Cancel project name edit and restore original value."""
-        # Restore original text from label
-        original_text = self.project_label.cget("text")
-        self.project_entry.delete(0, "end")
-        self.project_entry.insert(0, original_text)
-        
-        # Hide entry and buttons, show label
-        self.project_entry.pack_forget()
-        self.project_accept_btn.pack_forget()
-        self.project_cancel_btn.pack_forget()
-        self.project_label.pack(side="left")
-        self.edit_icon.pack(side="left", padx=(8, 0))
-    
-    def _on_project_title_hover(self, event=None) -> None:
-        """Add hover effect to project title."""
-        self.project_title_frame.configure(fg_color="#2a2a2a")
-    
-    def _on_project_title_leave(self, event=None) -> None:
-        """Remove hover effect from project title."""
-        self.project_title_frame.configure(fg_color="transparent")
 
     # -------------------------------------------------------------------------
     # Cover actions
@@ -633,11 +497,8 @@ class MainWindow(ctk.CTk):
             messagebox.showwarning("Nothing to Generate", "Add at least one item.")
             return
 
-        # Default output folder is a sibling of the project file when possible.
-        if self.project_file_path:
-            default_dir = str(Path(self.project_file_path).parent / DEFAULT_OUTPUT_DIRNAME)
-        else:
-            default_dir = str(Path(os.getcwd()) / DEFAULT_OUTPUT_DIRNAME)
+        # Default output folder
+        default_dir = str(Path(os.getcwd()) / DEFAULT_OUTPUT_DIRNAME)
 
         Path(default_dir).mkdir(parents=True, exist_ok=True)
         default_name = f"BOM_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"

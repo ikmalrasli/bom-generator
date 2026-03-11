@@ -139,6 +139,135 @@ def _resolve_path(value: Any, base_dir: Path) -> Optional[Path]:
     return (base_dir / p).resolve()
 
 
+def save_to_excel(excel_file_path: str, items: List[BOMItem]) -> None:
+    """Save BOM items to an Excel file.
+    
+    Creates an Excel file with the following columns:
+    - Model
+    - Description  
+    - Make
+    - Quantity
+    - Datasheet_Path (relative to Excel file if possible)
+    
+    Args:
+        excel_file_path: Path where to save the Excel file
+        items: List of BOMItem objects to save
+    """
+    
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError("pandas is required for Excel saving. Install with: pip install pandas openpyxl")
+    
+    excel_path = Path(excel_file_path)
+    project_dir = excel_path.parent
+    
+    # Prepare data for DataFrame
+    data = []
+    for item in items:
+        # Handle datasheet path - make relative if possible
+        datasheet_path = ""
+        if item.datasheet_path:
+            try:
+                abs_path = Path(item.datasheet_path)
+                if abs_path.is_absolute():
+                    # Try to make relative to Excel file location
+                    try:
+                        datasheet_path = os.path.relpath(str(abs_path), str(project_dir))
+                    except Exception:
+                        # If can't make relative, keep absolute
+                        datasheet_path = str(abs_path)
+                else:
+                    # Already relative
+                    datasheet_path = str(abs_path)
+            except Exception:
+                # If path processing fails, keep as-is
+                datasheet_path = item.datasheet_path
+        
+        data.append({
+            'Model': item.model,
+            'Description': item.description,
+            'Make': item.make,
+            'Quantity': item.quantity,
+            'Datasheet_Path': datasheet_path
+        })
+    
+    # Create DataFrame and save to Excel
+    df = pd.DataFrame(data)
+    
+    # Ensure parent directory exists
+    excel_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Save to Excel
+    df.to_excel(excel_file_path, index=False)
+
+
+def load_from_excel(excel_file_path: str) -> Dict[str, Any]:
+    """Load BOM data from an Excel file.
+    
+    Expected Excel columns:
+    - Model (required)
+    - Description (required) 
+    - Make (required)
+    - Quantity (required, defaults to 1)
+    - Datasheet_Path (optional, absolute or relative path to PDF)
+    
+    Returns a dict with:
+    - 'cover_page_path': None (Excel doesn't store cover info)
+    - 'items': List[BOMItem]
+    """
+    
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError("pandas is required for Excel loading. Install with: pip install pandas openpyxl")
+    
+    excel_path = Path(excel_file_path)
+    project_dir = excel_path.parent
+    
+    # Read Excel file
+    df = pd.read_excel(excel_file_path)
+    
+    # Normalize column names (case insensitive, strip spaces)
+    df.columns = df.columns.str.strip().str.lower()
+    
+    # Validate required columns
+    required_cols = ['model', 'description', 'make', 'quantity']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Excel file missing required columns: {', '.join(missing_cols)}")
+    
+    items = []
+    for idx, row in df.iterrows():
+        # Skip empty rows
+        if pd.isna(row['model']) or str(row['model']).strip() == "":
+            continue
+            
+        # Handle datasheet path if present
+        datasheet_path = ""
+        if 'datasheet_path' in df.columns and pd.notna(row['datasheet_path']):
+            datasheet_path = str(row['datasheet_path']).strip()
+            # Resolve relative paths relative to Excel file location
+            if datasheet_path and not Path(datasheet_path).is_absolute():
+                datasheet_path = str(project_dir / datasheet_path)
+        
+        # Create BOM item
+        item = BOMItem(
+            index=len(items) + 1,
+            model=str(row['model']).strip(),
+            description=str(row['description']).strip(),
+            make=str(row['make']).strip(),
+            quantity=int(row['quantity']) if pd.notna(row['quantity']) and str(row['quantity']).strip() != "" else 1,
+            datasheet_path=datasheet_path
+        )
+        items.append(item)
+    
+    return {
+        "cover_page_path": None,
+        "items": items,
+    }
+
+
 def _make_relative_if_possible(path_value: Optional[str], project_dir: Path) -> Optional[str]:
     """Convert `path_value` to a relative path when it is safe/possible."""
 
